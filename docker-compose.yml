@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: nexus_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nexus_network
+
+  redis:
+    image: redis:alpine
+    container_name: nexus_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - nexus_network
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile.dev
+    container_name: nexus_backend
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgres://admin:password123@postgres:5432/nexus_db
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=supersecret
+      - COOKIE_SECRET=supersecret
+      - STORE_CORS=http://localhost:3000
+      - ADMIN_CORS=http://localhost:7001,http://localhost:9000
+    ports:
+      - "9000:9000"
+      - "7001:7001"
+    volumes:
+      - ./apps/backend:/app
+      - /app/node_modules
+    networks:
+      - nexus_network
+
+  storefront:
+    build:
+      context: ./apps/storefront
+      dockerfile: Dockerfile.dev
+    container_name: nexus_storefront
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_MEDUSA_BACKEND_URL=http://backend:9000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/storefront:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - nexus_network
+
+volumes:
+  postgres_data:
+
+networks:
+  nexus_network:
+    driver: bridge
